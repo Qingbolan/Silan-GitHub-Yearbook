@@ -1,0 +1,18 @@
+# GitHub Yearbook Configuration
+
+# Date Range
+start_date: "2024-08-01"
+end_date: "2025-11-04"
+
+# GitHub Settings
+github_token_env: "GITHUB_TOKEN"  # Name of the env var containing the token
+
+# Local Repositories to scan (absolute paths)
+local_repos:
+  - "/Users/macbook.silan.tech/Documents/GitHub/My-GitHub-Yearbook"
+  # Add more paths here
+
+# Output Settings
+output_dir: "outputs"
+yearbook_filename: "yearbook.pdf"
+social_filename: "yearbook_card.png"
