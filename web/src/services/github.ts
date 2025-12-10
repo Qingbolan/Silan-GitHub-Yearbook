@@ -92,7 +92,7 @@ export async function fetchUserContributions(
 }
 
 async function fetchWithGraphQL(
-  username: string,
+  _username: string,
   startDate: string,
   endDate: string,
   token: string,
