@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { clearCache, getCacheStats, readCache, resetMemoryCache } from '../services/gistCache'
 
 const currentYear = new Date().getFullYear()
 
@@ -14,46 +13,15 @@ export default function LandingPage() {
   const [username, setUsername] = useState('')
   const [start, setStart] = useState(PRESETS[0].start)
   const [end, setEnd] = useState(PRESETS[0].end)
-  const [token, setToken] = useState(localStorage.getItem('github_token') || '')
-  const [showToken, setShowToken] = useState(false)
   const [selected, setSelected] = useState(PRESETS[0].label)
-  const [cacheInfo, setCacheInfo] = useState<{ repoCount: number; commitCount: number; lastUpdated: string | null } | null>(null)
-  const [clearingCache, setClearingCache] = useState(false)
   const navigate = useNavigate()
 
-  // Load cache info when token is available
-  useEffect(() => {
-    if (token) {
-      readCache(token).then(cache => {
-        if (cache) {
-          setCacheInfo(getCacheStats(cache))
-        }
-      }).catch(() => {
-        // Ignore errors
-      })
-    } else {
-      setCacheInfo(null)
-    }
-  }, [token])
-
-  const handleClearCache = async () => {
-    if (!token) return
-    setClearingCache(true)
-    try {
-      await clearCache(token)
-      resetMemoryCache()
-      setCacheInfo(null)
-    } catch (e) {
-      console.error('Failed to clear cache:', e)
-    } finally {
-      setClearingCache(false)
-    }
-  }
+  // Check if token is available (from env or localStorage for dev)
+  const hasToken = !!(import.meta.env.VITE_GITHUB_TOKEN || localStorage.getItem('github_token'))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!username.trim()) return
-    if (token) localStorage.setItem('github_token', token)
     navigate(`/yearbook/${username.trim()}/${start}/${end}`)
   }
 
@@ -66,7 +34,7 @@ export default function LandingPage() {
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
           </svg>
           <h1 className="text-xl font-semibold text-white">GitHub Yearbook</h1>
-          <p className="text-xs text-[#8b949e] mt-1">Generate stats card for your README</p>
+          <p className="text-xs text-[#8b949e] mt-1">Generate your GitHub year in review</p>
         </div>
 
         {/* Form */}
@@ -102,47 +70,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowToken(!showToken)}
-              className="text-xs text-[#8b949e] hover:text-white flex items-center gap-1"
-            >
-              <span>{showToken ? '▼' : '▶'}</span>
-              <span>Token (optional, for private repos)</span>
-            </button>
-            {showToken && (
-              <div className="mt-2 space-y-2">
-                <input
-                  type="password"
-                  value={token}
-                  onChange={e => setToken(e.target.value)}
-                  placeholder="ghp_..."
-                  className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded text-xs text-white font-mono placeholder-[#484f58] focus:border-[#58a6ff] focus:outline-none"
-                />
-                <p className="text-[10px] text-[#484f58]">
-                  Required scopes: <code className="text-[#58a6ff]">repo</code>, <code className="text-[#58a6ff]">read:org</code>, <code className="text-[#58a6ff]">gist</code>
-                </p>
-                {cacheInfo && (
-                  <div className="flex items-center justify-between p-2 bg-[#0d1117] border border-[#30363d] rounded">
-                    <div className="text-[10px] text-[#8b949e]">
-                      <span className="text-[#3fb950]">{cacheInfo.commitCount}</span> commits cached from{' '}
-                      <span className="text-[#58a6ff]">{cacheInfo.repoCount}</span> repos
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleClearCache}
-                      disabled={clearingCache}
-                      className="text-[10px] text-[#f85149] hover:underline disabled:opacity-50"
-                    >
-                      {clearingCache ? 'Clearing...' : 'Clear Cache'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           <button
             type="submit"
             disabled={!username.trim()}
@@ -150,6 +77,15 @@ export default function LandingPage() {
           >
             Generate
           </button>
+
+          {/* Token status indicator */}
+          <div className="text-center text-[10px] text-[#484f58]">
+            {hasToken ? (
+              <span className="text-[#3fb950]">● Token configured (private repos enabled)</span>
+            ) : (
+              <span>Public repos only</span>
+            )}
+          </div>
         </form>
 
         <p className="text-center text-[10px] text-[#484f58] mt-4">

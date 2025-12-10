@@ -13,7 +13,8 @@ export default function YearbookPage() {
 
   useEffect(() => {
     if (!username || !start || !end) return
-    const token = localStorage.getItem('github_token') || undefined
+    // Get token from env (build time) or localStorage (fallback for local dev)
+    const token = import.meta.env.VITE_GITHUB_TOKEN || localStorage.getItem('github_token') || undefined
     fetchUserContributions(username, start, end, token)
       .then(setData)
       .catch(e => setError(e.message))
