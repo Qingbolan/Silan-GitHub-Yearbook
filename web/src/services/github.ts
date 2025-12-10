@@ -307,7 +307,7 @@ async function fetchWithGraphQL(
 
     const collection = result.data.viewer.contributionsCollection;
     const viewerLogin = result.data.viewer.login;
-    const viewerId = result.data.viewer.id;
+    // const viewerId = result.data.viewer.id; // Unused while LOC fetch is disabled
 
     // Log for debugging
     const orgs = result.data.viewer.organizations?.nodes || [];
@@ -492,16 +492,16 @@ async function fetchWithGraphQL(
         }
       });
 
-      // Get LOC stats directly from GraphQL (much faster than REST API)
-      if (reposToFetchStats.length > 0) {
-        onProgress?.(`Fetching LOC stats...`);
-        const locStats = await fetchLOCViaGraphQL(reposToFetchStats.slice(0, 10), chunk.from, chunk.to, viewerId, token);
-        linesAdded += locStats.additions;
-        linesDeleted += locStats.deletions;
-        locStats.langLoc.forEach((loc, lang) => {
-          langLocMap.set(lang, (langLocMap.get(lang) || 0) + loc);
-        });
-      }
+      // TODO: LOC stats temporarily disabled for faster loading
+      // if (reposToFetchStats.length > 0) {
+      //   onProgress?.(`Fetching LOC stats...`);
+      //   const locStats = await fetchLOCViaGraphQL(reposToFetchStats.slice(0, 10), chunk.from, chunk.to, viewerId, token);
+      //   linesAdded += locStats.additions;
+      //   linesDeleted += locStats.deletions;
+      //   locStats.langLoc.forEach((loc, lang) => {
+      //     langLocMap.set(lang, (langLocMap.get(lang) || 0) + loc);
+      //   });
+      // }
 
       // Process PR contributions for organizations
       collection.pullRequestContributionsByRepository?.forEach((item: { repository: { owner: { login: string; avatarUrl: string; __typename: string } } }) => {
