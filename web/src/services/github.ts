@@ -500,7 +500,9 @@ async function fetchWithGraphQL(
       });
 
       // Fetch commit stats for these repos
-      if (reposToFetchStats.length > 0) {
+      // TODO: Re-enable when backend cache is ready
+      // For now, skip detailed stats to make page load faster
+      if (reposToFetchStats.length > 0 && false) { // Disabled temporarily
         console.log('Repos to fetch stats:', reposToFetchStats.map(r => `${r.owner}/${r.name}`));
         onProgress?.(`Fetching detailed stats for ${reposToFetchStats.length} repositories...`);
         const stats = await fetchCommitStats(reposToFetchStats, chunk.from, chunk.to, viewerId, token, onProgress);
