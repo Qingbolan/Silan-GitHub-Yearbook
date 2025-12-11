@@ -245,23 +245,32 @@ async def fetch_with_rest_api(
 ) -> dict[str, Any]:
     """Fetch contributions using REST API (public only)."""
     async with httpx.AsyncClient() as client:
-        # Fetch user events
+        # 1. Fetch User Profile
+        profile_response = await client.get(
+            f"https://api.github.com/users/{username}",
+            timeout=10.0,
+        )
+        if profile_response.status_code == 404:
+            raise Exception(f"User '{username}' not found")
+        
+        profile = profile_response.json()
+        
+        # 2. Fetch User Events (for contributions)
         events_response = await client.get(
             f"https://api.github.com/users/{username}/events/public?per_page=100",
             timeout=30.0,
         )
 
-        if events_response.status_code == 404:
-            raise Exception(f"User '{username}' not found")
-
-        events = events_response.json()
+        events = events_response.json() if events_response.status_code == 200 else []
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date + "T23:59:59")
 
         # Filter and aggregate push events
         daily_map: dict[str, int] = {}
-        repo_map: dict[str, int] = {}
-
+        
+        # We need to track repos encountered in events to merge with public repos list?
+        # Actually, events give us "activity", repos give us "portfolio".
+        
         for event in events:
             if event.get("type") != "PushEvent":
                 continue
@@ -270,29 +279,92 @@ async def fetch_with_rest_api(
                 continue
 
             date_str = event["created_at"][:10]
-            repo_name = event["repo"]["name"].split("/")[1]
             commit_count = event.get("payload", {}).get("size", 0)
 
             daily_map[date_str] = daily_map.get(date_str, 0) + commit_count
-            repo_map[repo_name] = repo_map.get(repo_name, 0) + commit_count
 
         daily_contributions = [{"date": d, "count": c} for d, c in sorted(daily_map.items())]
-        repo_contributions = [
-            {"repo": r, "count": c, "isPrivate": False}
-            for r, c in sorted(repo_map.items(), key=lambda x: x[1], reverse=True)
-        ]
-
         total_commits = sum(daily_map.values())
+        
+        # 3. Fetch Public Repositories (Top 100 by pushed_at)
+        repos_response = await client.get(
+            f"https://api.github.com/users/{username}/repos?sort=pushed&per_page=100",
+            timeout=30.0,
+        )
+        public_repos_list = repos_response.json() if repos_response.status_code == 200 else []
+        
+        # Process repositories
+        repo_contributions = []
+        lang_map: dict[str, dict] = {}
+        
+        for repo in public_repos_list:
+            # We don't have exact contribution count per repo from REST easily without heavy API usage.
+            # We can use 'size' or just list them as "Top Repos" with 0 contributions or stars?
+            # Let's map stars as a proxy for "importance" or just return them.
+            # The UI highlights "contributions", but for public data fallback, showing the repos is better than nothing.
+            # We will set 'count' to 0 or 1 to ensure they appear? 
+            # Or better, we match the GraphQL structure.
+            
+            repo_contributions.append({
+                "repo": repo.get("name"),
+                "fullName": repo.get("full_name"),
+                "count": 0, # Cannot easily get user's commit count per repo via single REST call
+                "isPrivate": repo.get("private", False),
+                "stars": repo.get("stargazers_count", 0),
+                "forks": repo.get("forks_count", 0),
+                "language": repo.get("language"),
+                "description": repo.get("description"),
+                "url": repo.get("html_url"),
+                "pushed_at": repo.get("pushed_at"), # For local sorting if needed
+            })
+            
+            # Aggregate languages
+            lang = repo.get("language")
+            if lang:
+                if lang not in lang_map:
+                    lang_map[lang] = {
+                        "name": lang,
+                        "color": "#8b949e", # Default color, no easy way to get real colors without map
+                        "size": 0,
+                        "repoCount": 0,
+                    }
+                # Use approximate size or repo count
+                lang_map[lang]["size"] += repo.get("size", 0)
+                lang_map[lang]["repoCount"] += 1
+                
+        # Sort repos by stars (or push time?) - Graphql uses pushed_at then count.
+        # Let's sort by stars for "portfolio" feel in fallback.
+        repo_contributions.sort(key=lambda x: x["stars"], reverse=True)
+        
+        # Calc language stats
+        total_size = sum(l["size"] for l in lang_map.values()) or 1
+        language_stats = sorted(
+            [
+                {**l, "percentage": (l["size"] / total_size) * 100}
+                for l in lang_map.values()
+            ],
+            key=lambda x: x["size"],
+            reverse=True,
+        )
 
         return {
-            "username": username,
-            "totalContributions": total_commits,
+            "username": profile.get("login"),
+            "avatarUrl": profile.get("avatar_url"),
+            "bio": profile.get("bio"),
+            "company": profile.get("company"),
+            "location": profile.get("location"),
+            "followers": profile.get("followers", 0),
+            "following": profile.get("following", 0),
+            "publicRepos": profile.get("public_repos", 0),
+            "privateRepos": 0, # Unknown
+            "totalRepos": profile.get("public_repos", 0),
+            "totalContributions": total_commits, # Approximate based on recent events
             "totalCommits": total_commits,
-            "pullRequests": 0,
+            "pullRequests": 0, # Hard to calc from events easily
             "pullRequestReviews": 0,
             "issues": 0,
             "dailyContributions": daily_contributions,
-            "repositoryContributions": repo_contributions,
-            "languageStats": [],
-            "organizations": [],
+            "repositoryContributions": repo_contributions, # Top public repos
+            "languageStats": language_stats,
+            "organizations": [], # Requires another call, skip for now
         }

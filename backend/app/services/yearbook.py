@@ -1,7 +1,8 @@
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, List, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+
 import logging
 
 from ..models.user import YearbookStats, UserToken
@@ -10,10 +11,15 @@ from .filters import FilterStrategy, DateRangeFilter, YearFilter
 
 logger = logging.getLogger(__name__)
 
+from ..repositories import TokenRepository, StatsRepository, UserRepository
+
 class YearbookService:
     def __init__(self, db: AsyncSession, provider: DataProvider = None):
         self.db = db
         self.provider = provider or GitHubProvider()
+        self.token_repo = TokenRepository(db)
+        self.stats_repo = StatsRepository(db)
+        self.user_repo = UserRepository(db)
 
     @staticmethod
     def parse_period(period: str) -> tuple[str, str]:
@@ -44,14 +50,42 @@ class YearbookService:
     ) -> dict:
         """
         Main entry point. 
-        If start_date and end_date are provided, treats as custom range (no DB cache).
-        If only year is provided, uses DB cache (24h).
+        If start_date and end_date are provided, treats as custom range.
+        Optimization: Custom ranges split into Year queries to maximize cache hits.
         """
         
         # 1. Determine Context (Custom Range vs Standard Year)
         is_custom_range = bool(start_date or end_date)
         target_start = start_date or f"{year}-01-01"
         target_end = end_date or f"{year}-12-31"
+
+        # OPTIMIZATION: Smart Merge for Custom Ranges
+        if is_custom_range:
+            try:
+                s_date = datetime.strptime(target_start, "%Y-%m-%d")
+                e_date = datetime.strptime(target_end, "%Y-%m-%d")
+                
+                # Identify required years
+                years = range(s_date.year, e_date.year + 1)
+                
+                # Fetch years in parallel
+                tasks = [
+                    self.get_stats(
+                        username, 
+                        y, 
+                        token=token, 
+                        force_refresh=force_refresh
+                    )
+                    for y in years
+                ]
+                year_stats_list = await asyncio.gather(*tasks)
+                
+                # Merge the yearly stats into the specific custom range
+                return self._merge_stats_dicts(year_stats_list, target_start, target_end)
+
+            except ValueError:
+                # Fallback to original raw fetch if date parsing fails (unlikely)
+                pass
 
         # 2. Try Cache (Only for Standard Year)
         if not is_custom_range and not force_refresh:
@@ -61,13 +95,25 @@ class YearbookService:
 
         # 3. Resolve Token
         if not token:
-            token = await self._get_stored_token(username)
+            token_obj = await self.token_repo.get_by_username(username)
+            token = token_obj.github_token if token_obj else None
 
         # 4. Fetch Raw Data
         raw_data = await self.provider.fetch_contributions(username, target_start, target_end, token)
         
+        # Ensure User Record Exists (Auto-Create)
+        await self.user_repo.create_or_update(
+            username=raw_data.get("username", username),
+            avatar_url=raw_data.get("avatarUrl"),
+            bio=raw_data.get("bio"),
+            company=raw_data.get("company"),
+            location=raw_data.get("location"),
+            followers=raw_data.get("followers", 0),
+            following=raw_data.get("following", 0),
+            public_repos=raw_data.get("publicRepos", 0)
+        )
+        
         # 5. Apply Filters (Validation/Enforcement)
-        # Even though provider attempts to fetch range, we apply filter to ensure data consistency
         if is_custom_range:
             strategy = DateRangeFilter(target_start, target_end)
         else:
@@ -75,72 +121,173 @@ class YearbookService:
             
         filtered_data = strategy.apply(raw_data)
         
-        # 6. Process Statistics (Calculate Streaks, etc.)
-        # Move streak logic here or keep in a helper? 
-        # For now, let's keep the streak calculation logic we had, but encapsulated.
+        # 6. Process Statistics
         stats_model = self._process_stats(username, year, filtered_data)
         
         # 7. Save to Cache (Only for Standard Year)
         if not is_custom_range:
             await self._save_to_cache(stats_model)
-            # Return dict format from model
             return self._model_to_dict(stats_model)
         else:
-            # For custom range, just return the processed dict
+            # Should not happen with Smart Merge, but as fallback
             return self._model_to_dict(stats_model, is_cached=False)
 
     async def _get_cached_stats(self, username: str, year: int) -> Optional[dict]:
-        stmt = (
-            select(YearbookStats)
-            .where(YearbookStats.username == username, YearbookStats.year == year)
-            .order_by(YearbookStats.updated_at.desc())
-        )
-        result = await self.db.execute(stmt)
-        rows = result.scalars().all()
-        cached = rows[0] if rows else None
-
-        # If duplicates exist, clean up older ones to avoid future conflicts
-        if len(rows) > 1:
-            for stale in rows[1:]:
-                await self.db.delete(stale)
-            await self.db.commit()
-        
+        cached = await self.stats_repo.get_cached(username, year)
         if cached:
-            # Check TTL (24h)
-            if datetime.utcnow() - cached.updated_at < timedelta(hours=24):
+            # TTL Logic
+            current_year = datetime.utcnow().year
+            is_past_year = year < current_year
+            
+            # If past year, cache is valid for 30 days (essentially "forever" relative to session)
+            # If current year, cache is valid for 24 hours
+            ttl = timedelta(days=30) if is_past_year else timedelta(hours=24)
+            
+            if datetime.utcnow() - cached.updated_at < ttl:
                 return self._model_to_dict(cached, is_cached=True)
             else:
-                # Delete stale
-                await self.db.delete(cached)
-                await self.db.commit()
+                await self.stats_repo.delete(cached)
         return None
 
-    async def _get_stored_token(self, username: str) -> Optional[str]:
-        stmt = (
-            select(UserToken)
-            .where(UserToken.username == username, UserToken.is_valid == True)
-            .order_by(UserToken.updated_at.desc())
-        )
-        result = await self.db.execute(stmt)
-        rows = result.scalars().all()
-        token_obj = rows[0] if rows else None
-        # Clean duplicates if any (older rows)
-        if len(rows) > 1:
-            for stale in rows[1:]:
-                await self.db.delete(stale)
-            await self.db.commit()
-        return token_obj.github_token if token_obj else None
+    def _merge_stats_dicts(self, stats_list: List[dict], start: str, end: str) -> dict:
+        """Merge multiple yearly stats dicts into one custom range dict."""
+        if not stats_list:
+            return {}
+            
+        # Use the most recent year's profile info
+        base = stats_list[-1].copy()
+        
+        # Filter and merge daily contributions
+        all_days = []
+        for s in stats_list:
+            all_days.extend(s.get('dailyContributions', []))
+            
+        # Filter by range
+        filtered_days = [
+            d for d in all_days 
+            if start <= d['date'] <= end
+        ]
+        
+        # Recalculate totals and streaks based on filtered days
+        active_days = [d for d in filtered_days if d['count'] > 0]
+        total = sum(d['count'] for d in filtered_days)
+        
+        # Helper for streak calc (dup from _process_stats to avoid drift)
+        longest = 0
+        current = 0
+        streak = 0
+        prev_date = None
+        
+        sorted_active = sorted(active_days, key=lambda x: x['date'])
+        for d in sorted_active:
+            cur_d = datetime.strptime(d['date'], "%Y-%m-%d")
+            if prev_date and (cur_d - prev_date).days == 1:
+                streak += 1
+            else:
+                longest = max(longest, streak)
+                streak = 1
+            prev_date = cur_d
+        longest = max(longest, streak)
+        
+        # Current streak (from end date backwards)
+        daily_map = {d['date']: d['count'] for d in filtered_days}
+        if daily_map:
+            # Start checking from target_end (or actual last data point)
+            curr = datetime.strptime(end, "%Y-%m-%d").date()
+            # If end is in future, cap at today? Assuming end provided is valid.
+            today = datetime.utcnow().date()
+            if curr > today:
+                curr = today
+                
+            run = 0
+            while True:
+                s_date = curr.strftime("%Y-%m-%d")
+                if s_date in daily_map and daily_map[s_date] > 0:
+                    run += 1
+                    curr -= timedelta(days=1)
+                elif s_date < start:
+                    break # Out of bounds
+                else:
+                    # If we miss a day but it is AFTER the last data point?
+                    # "Current streak" usually means "active streak ending separate from today".
+                    # If today/yesterday is 0, current streak is 0? 
+                    # Original logic was "backwards from LAST DATA DATE".
+                    # Let's match original logic: backwards from sorted_active[-1] if exists
+                    break
+                    
+            # Re-eval: simpler metric. Count backwards from 'end' IF 'end' has contribution?
+            # Or use the "last active date" method.
+            # Use "last active date" method to be robust.
+            if sorted_active:
+                last_active_date = datetime.strptime(sorted_active[-1]['date'], "%Y-%m-%d").date()
+                # If last active date is too far from 'end' (gap > 1 day), current streak is 0?
+                # Actually, standard is: Streak ends on last_active_date. 
+                # Is it "Active Streak"?
+                # Let's stick to: Count consecutive days ending at last_active_date.
+                curr = last_active_date
+                run = 0
+                while curr.strftime("%Y-%m-%d") in daily_map and daily_map[curr.strftime("%Y-%m-%d")] > 0:
+                     run += 1
+                     curr -= timedelta(days=1)
+                current = run
+
+        # Merge Repo Lists (Deduplicate by name)
+        # Use a dict keyed by name to keep unique
+        all_repos = {}
+        for s in stats_list:
+            for r in s.get('repositoryContributions', []):
+                # FIX: use 'repo' key as per GitHubProvider output, fallback to 'name'
+                key = r.get('repo') or r.get('name')
+                if key:
+                    all_repos[key] = r
+        merged_repos = list(all_repos.values())
+
+        # Update base
+        base['totalContributions'] = total
+        base['dailyContributions'] = filtered_days
+        base['activeDays'] = len(active_days)
+        base['longestStreak'] = longest
+        base['currentStreak'] = current
+        base['repositoryContributions'] = merged_repos
+        base['repoCount'] = len(merged_repos)
+        base['cached'] = all(s.get('cached', False) for s in stats_list) # True if all sources were cached
+        
+        # For languageStats, organizations, etc., we keep the latest year's snapshot 
+        # as it is the most relevant representation of "Current Status".
+        
+        return base
 
     async def _save_to_cache(self, stats: YearbookStats):
-        # Remove existing if any (double check to avoid collision on insert)
-        existing = await self._get_cached_stats(stats.username, stats.year)
-        if existing: 
-            # If we are here, it means we decided to refresh, so we should have deleted it.
-            # But just safe check
-            pass # managing separate delete in _get_cached_stats logic for stale
-            
-        self.db.add(stats)
-        await self.db.commit()
+        # We need to pass arguments to update_cache.
+        # stats is a YearbookStats object.
+        # Construct dict from it.
+        data = {
+            "username": stats.username,
+            "year": stats.year,
+            "avatar_url": stats.avatar_url,
+            "bio": stats.bio,
+            "company": stats.company,
+            "location": stats.location,
+            "followers": stats.followers,
+            "following": stats.following,
+            "total_contributions": stats.total_contributions,
+            "total_commits": stats.total_commits,
+            "pull_requests": stats.pull_requests,
+            "pull_request_reviews": stats.pull_request_reviews,
+            "issues": stats.issues,
+            "longest_streak": stats.longest_streak,
+            "current_streak": stats.current_streak,
+            "active_days": stats.active_days,
+            "repo_count": stats.repo_count,
+            "public_repo_count": stats.public_repo_count,
+            "private_repo_count": stats.private_repo_count,
+            "total_repo_count": stats.total_repo_count,
+            "daily_contributions": stats.daily_contributions,
+            "language_stats": stats.language_stats,
+            "top_repos": stats.top_repos,
+            "organizations": stats.organizations,
+        }
+        await self.stats_repo.update_cache(data)
 
     def _process_stats(self, username: str, year: int, data: dict) -> YearbookStats:
         """Process raw dict into YearbookStats DB model."""
