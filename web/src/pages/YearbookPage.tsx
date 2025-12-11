@@ -69,39 +69,27 @@ export default function YearbookPage() {
     const timeline = data.dailyContributions || []
     const total = data.totalContributions || data.totalCommits
 
-    // Weekly activity (52 weeks relative to end date)
+    // Weekly activity
     const weekMap = new Map<number, number>()
-
-    // Determine the reference end date
-    // If end param is provided use it, otherwise use Dec 31 of the year
-    const endDateRef = end
-      ? new Date(end)
-      : new Date(`${year}-12-31`)
-
-    // Ensure we are comparing dates correctly (reset time to 00:00:00 for clean day diffs if needed, 
-    // but relying on timestamps/days calculation is safer for general bucketing)
     const oneWeekMs = 604800000
+    const startDateRef = resolvedStart ? new Date(resolvedStart) : new Date(`${year}-01-01`)
+    const endDateRef = resolvedEnd ? new Date(resolvedEnd) : new Date(`${year}-12-31`)
+    const isCustom = !!(resolvedStart && resolvedEnd && !(resolvedStart.endsWith('-01-01') && resolvedEnd.endsWith('-12-31')))
+    const totalDays = Math.max(1, Math.floor((endDateRef.getTime() - startDateRef.getTime()) / 86400000) + 1)
+    const weeksCount = isCustom ? Math.max(1, Math.ceil(totalDays / 7)) : 52
 
     timeline.forEach(d => {
       const date = new Date(d.date)
-      // Calculate how many weeks back from the reference date
       const diffTime = endDateRef.getTime() - date.getTime()
-      // Weeks ago: 0 means this week, 1 means last week, etc.
-      // We want to map this to an index 0..51 where 51 is the last week (closest to end date)
       const weeksAgo = Math.floor(diffTime / oneWeekMs)
-
-      const weekIndex = 51 - weeksAgo
-
-      if (weekIndex >= 0 && weekIndex < 52) {
+      const weekIndex = (weeksCount - 1) - weeksAgo
+      if (weekIndex >= 0 && weekIndex < weeksCount) {
         weekMap.set(weekIndex, (weekMap.get(weekIndex) || 0) + d.count)
       }
     })
 
-    // Create array of 52 weeks
-    const weeks = Array(52).fill(0)
-    weekMap.forEach((count, idx) => {
-      weeks[idx] = count
-    })
+    const weeks = Array(weeksCount).fill(0)
+    weekMap.forEach((count, idx) => { weeks[idx] = count })
     const maxW = Math.max(...weeks, 1)
 
     // Day of week distribution
@@ -136,6 +124,7 @@ export default function YearbookPage() {
       activeDays: data.activeDays,
       weeks,
       maxW,
+      weeksCount,
       dayOfWeek,
       maxDay,
       maxDayEntry,
@@ -283,14 +272,14 @@ export default function YearbookPage() {
             <div className="grid lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-[#21262d]">
               {/* Left: Activity Graph + Day distribution */}
               <div className="p-4 space-y-4">
-                <Section title="52-Week Activity">
+                <Section title={isCustomRange ? `Activity (${stats.weeksCount} weeks)` : '52-Week Activity'}>
                   <div className="flex gap-px h-10 rounded overflow-hidden bg-[#161b22]">
                     {stats.weeks.map((w, i) => (
                       <div
                         key={i}
                         className="flex-1"
                         style={{ backgroundColor: w ? `rgba(63,185,80,${0.2 + (w / stats.maxW) * 0.8})` : 'transparent' }}
-                        title={`Week ${i + 1}: ${w}`}
+                        title={`Week ${i + 1} : ${w}`}
                       />
                     ))}
                   </div>
@@ -425,7 +414,7 @@ export default function YearbookPage() {
 
             {/* Footer */}
             <div className="px-4 py-2 bg-[#161b22] border-t border-[#21262d] flex justify-between text-[10px] text-[#484f58]">
-              <span>github-yearbook</span>
+              <span>@silan-github-yearbook</span>
               <span>Generated {new Date().toLocaleDateString()}</span>
             </div>
           </div>

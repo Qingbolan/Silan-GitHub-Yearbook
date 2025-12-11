@@ -502,7 +502,7 @@ def generate_stats_svg(stats: YearbookStats) -> str:
 
   <!-- Footer -->
   <g transform="translate(20, {305 + bio_height})">
-    <text fill="#484f58" font-size="10">github-yearbook · {datetime.utcnow().strftime("%Y-%m-%d")}</text>
+    <text fill="#484f58" font-size="10">@silan-github-yearbook · {datetime.utcnow().strftime("%Y-%m-%d")}</text>
   </g>
 </svg>'''
 
