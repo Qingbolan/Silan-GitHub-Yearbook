@@ -6,7 +6,7 @@ import { getYearbookStats, type YearbookStats, API_BASE } from '../services/api'
 import VisitorMap from '../components/VisitorMap'
 
 export default function YearbookPage() {
-  const { username, start, end } = useParams<{ username: string; start: string; end: string }>()
+  const { username, year: yearParam, start, end } = useParams<{ username: string; year?: string; start?: string; end?: string }>()
   const location = useLocation()
   const [data, setData] = useState<YearbookStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -14,7 +14,31 @@ export default function YearbookPage() {
   const [copied, setCopied] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
-  const year = start ? parseInt(start.slice(0, 4)) : new Date().getFullYear()
+  // Helper to resolve period keywords
+  let resolvedStart = start
+  let resolvedEnd = end
+  let resolvedYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
+  let explicitTitle = new URLSearchParams(location.search).get('title')
+
+  if (yearParam && ['pastyear', 'pastmonth', 'pastweek'].includes(yearParam.toLowerCase())) {
+    const today = new Date()
+    const d = new Date()
+    if (yearParam === 'pastyear') d.setDate(d.getDate() - 365)
+    else if (yearParam === 'pastmonth') d.setDate(d.getDate() - 30)
+    else if (yearParam === 'pastweek') d.setDate(d.getDate() - 7)
+
+    resolvedStart = d.toISOString().split('T')[0]
+    resolvedEnd = today.toISOString().split('T')[0]
+    // If no title provided, use the friendly param name
+    if (!explicitTitle) {
+      explicitTitle = yearParam.replace('past', 'Past ').replace(/^\w/, c => c.toUpperCase())
+    }
+    // Set year to current year for fallback logic if needed, or 0 to indicate custom
+    resolvedYear = today.getFullYear()
+  }
+
+  const year = resolvedStart ? parseInt(resolvedStart.slice(0, 4)) : resolvedYear
+  const title = explicitTitle // use the local variable
   const isScreenshot = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return params.get('screenshot') === '1'
@@ -25,18 +49,19 @@ export default function YearbookPage() {
     return params.get('embed') === '1'
   }, [location.search])
 
-  const showOverview = !location.hash || location.hash === '#overview'
-  const showMap = !location.hash || location.hash === '#viewmapi'
+  const currentHash = location.hash || '#overview'
+  const showOverview = currentHash === '#overview'
+  const showMap = currentHash === '#viewmapi'
 
   useEffect(() => {
     if (!username || !year) return
     // Use backend API with caching - no need for token on frontend
     // Backend will use stored token if available
-    getYearbookStats(username, year)
+    getYearbookStats(username, year, undefined, resolvedStart, resolvedEnd)
       .then(setData)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [username, year])
+  }, [username, year, resolvedStart, resolvedEnd])
 
   const stats = useMemo(() => {
     if (!data) return null
@@ -44,13 +69,39 @@ export default function YearbookPage() {
     const timeline = data.dailyContributions || []
     const total = data.totalContributions || data.totalCommits
 
-    // Weekly activity (52 weeks)
+    // Weekly activity (52 weeks relative to end date)
     const weekMap = new Map<number, number>()
+
+    // Determine the reference end date
+    // If end param is provided use it, otherwise use Dec 31 of the year
+    const endDateRef = end
+      ? new Date(end)
+      : new Date(`${year}-12-31`)
+
+    // Ensure we are comparing dates correctly (reset time to 00:00:00 for clean day diffs if needed, 
+    // but relying on timestamps/days calculation is safer for general bucketing)
+    const oneWeekMs = 604800000
+
     timeline.forEach(d => {
-      const w = Math.floor(new Date(d.date).getTime() / 604800000)
-      weekMap.set(w, (weekMap.get(w) || 0) + d.count)
+      const date = new Date(d.date)
+      // Calculate how many weeks back from the reference date
+      const diffTime = endDateRef.getTime() - date.getTime()
+      // Weeks ago: 0 means this week, 1 means last week, etc.
+      // We want to map this to an index 0..51 where 51 is the last week (closest to end date)
+      const weeksAgo = Math.floor(diffTime / oneWeekMs)
+
+      const weekIndex = 51 - weeksAgo
+
+      if (weekIndex >= 0 && weekIndex < 52) {
+        weekMap.set(weekIndex, (weekMap.get(weekIndex) || 0) + d.count)
+      }
     })
-    const weeks = Array.from(weekMap.entries()).sort((a, b) => a[0] - b[0]).slice(-52).map(([, c]) => c)
+
+    // Create array of 52 weeks
+    const weeks = Array(52).fill(0)
+    weekMap.forEach((count, idx) => {
+      weeks[idx] = count
+    })
     const maxW = Math.max(...weeks, 1)
 
     // Day of week distribution
@@ -107,7 +158,8 @@ export default function YearbookPage() {
     }
   }, [data])
 
-  const yearStr = start?.slice(0, 4)
+  const yearStr = resolvedStart?.slice(0, 4) || String(resolvedYear)
+  const isCustomRange = resolvedStart && resolvedEnd && !(resolvedStart.endsWith('-01-01') && resolvedEnd.endsWith('-12-31'))
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   const copyMarkdown = () => {
@@ -178,7 +230,9 @@ export default function YearbookPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-lg font-bold text-white">{username}</span>
-                  <span className="text-xs text-[#8b949e] bg-[#21262d] px-2 py-0.5 rounded">{yearStr}</span>
+                  <span className="text-xs text-[#8b949e] bg-[#21262d] px-2 py-0.5 rounded">
+                    {title || (isCustomRange ? `${resolvedStart} ~ ${resolvedEnd}` : yearStr)}
+                  </span>
                   {stats.organizations.length > 0 && (
                     <div className="flex -space-x-2">
                       {stats.organizations.map(org => (

@@ -26,6 +26,7 @@ export default function App() {
       <RedirectHandler />
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/yearbook/:username/:year" element={<YearbookPage />} />
         <Route path="/yearbook/:username/:start/:end" element={<YearbookPage />} />
       </Routes>
     </BrowserRouter>

@@ -146,11 +146,18 @@ export interface YearbookStats {
 export async function getYearbookStats(
   username: string,
   year: number,
-  token?: string
+  token?: string,
+  start?: string,
+  end?: string
 ): Promise<YearbookStats> {
-  const url = token
+  let url = token
     ? `${API_BASE}/stats/${username}/${year}?token=${encodeURIComponent(token)}`
     : `${API_BASE}/stats/${username}/${year}`
+
+  if (start && end) {
+    const separator = url.includes('?') ? '&' : '?'
+    url += `${separator}start=${start}&end=${end}`
+  }
   const response = await fetch(url)
   if (!response.ok) {
     const error = await response.json()
