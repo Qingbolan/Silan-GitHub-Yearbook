@@ -20,7 +20,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://yearbook.silan.tech',
+        target: 'https://yearbook.silan.tech',
         changeOrigin: true,
       },
     },

@@ -2,7 +2,7 @@
 
 A self-hosted tool to generate beautiful, shareable yearbooks of your GitHub activity. It provides interactive web summaries, responsive screenshots for your profile, and embeddable widgets for your website.
 
-[![Example Yearbook](http://yearbook.silan.tech/api/screenshot/Qingbolan/pastyear?width=1280)](http://yearbook.silan.tech/api/embed/Qingbolan/pastyear)
+[![Example Yearbook](https://yearbook.silan.tech/api/screenshot/Qingbolan/pastyear?width=1280)](https://yearbook.silan.tech/api/embed/Qingbolan/pastyear)
 
 ## Features
 
@@ -23,21 +23,21 @@ Here are all the ways you can display your yearbook.
 ### 1. Viewport Variants (Responsive)
 
 **Desktop Layout (Default)**
-[![My Stats (Desktop)](http://yearbook.silan.tech/api/screenshot/Qingbolan/2024?width=1280)](http://yearbook.silan.tech/api/embed/Qingbolan/2024)
+[![My Stats (Desktop)](https://yearbook.silan.tech/api/screenshot/Qingbolan/2024?width=1280)](https://yearbook.silan.tech/api/embed/Qingbolan/2024)
 
 **Mobile Layout (Narrow)**
-[![My Stats (Mobile)](http://yearbook.silan.tech/api/screenshot/Qingbolan/2024?width=400)](http://yearbook.silan.tech/api/embed/Qingbolan/2024)
+[![My Stats (Mobile)](https://yearbook.silan.tech/api/screenshot/Qingbolan/2024?width=400)](https://yearbook.silan.tech/api/embed/Qingbolan/2024)
 
 ### 2. Time Periods (Flexible)
 
 **Specific Year**
-[![2024 Stats](http://yearbook.silan.tech/api/screenshot/Qingbolan/2024)](http://yearbook.silan.tech/api/embed/Qingbolan/2024)
+[![2024 Stats](https://yearbook.silan.tech/api/screenshot/Qingbolan/2024)](https://yearbook.silan.tech/api/embed/Qingbolan/2024)
 
 **Rolling Past Year (Last 365 Days)**
-[![Past Year Stats](http://yearbook.silan.tech/api/screenshot/Qingbolan/pastyear)](http://yearbook.silan.tech/api/embed/Qingbolan/pastyear)
+[![Past Year Stats](https://yearbook.silan.tech/api/screenshot/Qingbolan/pastyear)](https://yearbook.silan.tech/api/embed/Qingbolan/pastyear)
 
 **Rolling Past Month (Last 30 Days)**
-[![Past Month Stats](http://yearbook.silan.tech/api/screenshot/Qingbolan/pastmonth)](http://yearbook.silan.tech/api/embed/Qingbolan/pastmonth)
+[![Past Month Stats](https://yearbook.silan.tech/api/screenshot/Qingbolan/pastmonth)](https://yearbook.silan.tech/api/embed/Qingbolan/pastmonth)
 
 ### 3. Embed Modules (Sectional)
 
@@ -45,15 +45,15 @@ These are best used as **Iframes** so you can see the specific section live.
 
 **Full Dashboard**
 
-<iframe src="http://yearbook.silan.tech/api/embed/Qingbolan/pastyear" width="100%" height="800" frameborder="0"></iframe>
+<iframe src="https://yearbook.silan.tech/api/embed/Qingbolan/pastyear" width="100%" height="800" frameborder="0"></iframe>
 
 **Overview Only (`#overview`)**
 
-<iframe src="http://yearbook.silan.tech/api/embed/Qingbolan/pastyear#overview" width="100%" height="400" frameborder="0"></iframe>
+<iframe src="https://yearbook.silan.tech/api/embed/Qingbolan/pastyear#overview" width="100%" height="400" frameborder="0"></iframe>
 
 **Map Only (`#viewmapi`)**
 
-<iframe src="http://yearbook.silan.tech/api/embed/Qingbolan/pastyear#viewmapi" width="100%" height="400" frameborder="0"></iframe>
+<iframe src="https://yearbook.silan.tech/api/embed/Qingbolan/pastyear#viewmapi" width="100%" height="400" frameborder="0"></iframe>
 
 ---
 
@@ -171,7 +171,7 @@ The backend is configured to serve the frontend static files.
 
 1. Build frontend: `cd web && npm run build`
 2. Run backend: `cd backend && uvicorn app.main:app`
-3. Access at `http://yearbook.silan.tech`
+3. Access at `https://yearbook.silan.tech`
 
 ---
 

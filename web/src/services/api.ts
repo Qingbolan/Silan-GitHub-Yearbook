@@ -1,6 +1,6 @@
 // Backend API service
 
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://yearbook.silan.tech/api'
+export const API_BASE = import.meta.env.VITE_API_BASE || 'https://yearbook.silan.tech/api'
 
 // ============== Token Management ==============
 
