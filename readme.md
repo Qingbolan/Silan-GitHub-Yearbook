@@ -45,7 +45,7 @@ These are best used as **Iframes** so you can see the specific section live.
 
 **Full Dashboard**
 
-<iframe src="https://yearbook.silan.tech/api/embed/Qingbolan/pastyear" width="100%" height="800" frameborder="0"></iframe>
+<iframe src="https://yearbook.silan.tech/embed/Qingbolan/pastyear" width="100%" height="800" frameborder="0"></iframe>
 
 **Overview Only (`#overview`)**
 
@@ -113,11 +113,11 @@ Generates a static PNG image of the yearbook.
 
 **Endpoint:** `GET /api/screenshot/{username}/{period}`
 
-| Parameter  | Type     | Default      | Description                                                      |
-| :--------- | :------- | :----------- | :--------------------------------------------------------------- |
-| `username` | `string` | **Required** | Your GitHub username                                             |
-| `period`   | `string` | **Required** | `YYYY` (e.g. `2024`), `pastyear`, or `pastmonth`                 |
-| `width`    | `int`    | `1280`       | Viewport width. Use `400` for mobile layout, `1280` for desktop. |
+| Parameter    | Type       | Default            | Description                                                          |
+| :----------- | :--------- | :----------------- | :------------------------------------------------------------------- |
+| `username` | `string` | **Required** | Your GitHub username                                                 |
+| `period`   | `string` | **Required** | `YYYY` (e.g. `2024`), `pastyear`, or `pastmonth`             |
+| `width`    | `int`    | `1280`           | Viewport width. Use `400` for mobile layout, `1280` for desktop. |
 
 **Examples:**
 
@@ -130,11 +130,11 @@ Returns a redirect to the interactive frontend. Useful for permanent links.
 
 **Endpoint:** `GET /api/embed/{username}/{period}`
 
-| Parameter  | Type     | Default      | Description                                     |
-| :--------- | :------- | :----------- | :---------------------------------------------- |
-| `username` | `string` | **Required** | Your GitHub username                            |
-| `period`   | `string` | **Required** | `YYYY`, `pastyear`, or `pastmonth`              |
-| `hash`     | `string` | Optional     | `#overview` (Card only), `#viewmapi` (Map only) |
+| Parameter    | Type       | Default            | Description                                         |
+| :----------- | :--------- | :----------------- | :-------------------------------------------------- |
+| `username` | `string` | **Required** | Your GitHub username                                |
+| `period`   | `string` | **Required** | `YYYY`, `pastyear`, or `pastmonth`            |
+| `hash`     | `string` | Optional           | `#overview` (Card only), `#viewmapi` (Map only) |
 
 ### 3. Raw Card (Legacy)
 
