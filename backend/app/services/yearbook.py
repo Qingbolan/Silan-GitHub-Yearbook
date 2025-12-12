@@ -361,6 +361,12 @@ class YearbookService:
         )
 
     def _model_to_dict(self, stats: YearbookStats, is_cached: bool = False) -> dict:
+        # Sort repos by commit count (descending), then by stars as secondary sort
+        sorted_repos = sorted(
+            stats.top_repos or [],
+            key=lambda x: (x.get('count', 0), x.get('stars', 0)),
+            reverse=True
+        )
         return {
             "username": stats.username,
             "year": stats.year,
@@ -384,7 +390,7 @@ class YearbookService:
             "totalRepoCount": stats.total_repo_count,
             "dailyContributions": stats.daily_contributions,
             "languageStats": stats.language_stats,
-            "repositoryContributions": stats.top_repos,
+            "repositoryContributions": sorted_repos,
             "organizations": stats.organizations,
             "cached": is_cached,
         }
